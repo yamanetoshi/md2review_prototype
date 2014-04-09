@@ -1,26 +1,88 @@
 require 'fileutils'
+require 'rake/clean'
+
+MD2RE = "md2review"
+
+SRCS = FileList["**/*.md"]
+RESRCS = SRCS.ext('re')
+SRC = FileList['*.re'] +  ["config.yml"]
+
+def use_bundler()
+  if system("bundle > /dev/null 2>&1")
+    "bundle exec "
+  else
+    ""
+  end
+end
 
 def build(mode, chapter)
-  sh "review-compile --target=#{mode} --footnotetext --stylesheet=style.css #{chapter} > tmp"
-  mode_ext = {"html" => "html", "latex" => "tex",
-              "idgxml" => "xml", "inao" => "inao"}
+  sh "#{use_bundler}review-compile --target=#{mode} --footnotetext --singledirmode --stylesheet=style.css #{chapter} > tmp"
+  mode_ext = {
+    "html" => "html",
+    "text" => "txt",
+    "latex" => "tex",
+    "idgxml" => "xml",
+    "inao" => "inao"
+  }
   FileUtils.mv "tmp", chapter.gsub(/re\z/, mode_ext[mode])
 end
 
 def build_all(mode)
-  sh "review-compile --all --target=#{mode} --footnotetext --stylesheet=style.css"
+  sh "#{use_bundler}review-compile --all --target=#{mode} --footnotetext --singledirmode --stylesheet=style.css"
 end
 
-desc "build html (Usage: rake build re=target.re)"
-task :html do
-  if ENV['re'].nil?
-    puts "Usage: rake build re=target.re"
-    exit
+["html", "text", "idgxml"].each{|mode|
+  desc "build #{mode} (Usage: rake build re=target.re)"
+  task mode.to_sym do
+    if ENV['re'].nil?
+      puts "Usage: rake build re=target.re"
+      exit
+    end
+    build(mode, ENV['re'])
   end
-  build("html", ENV['re'])
+
+  desc "build all #{mode}"
+  task "#{mode}_all".to_sym do
+    build_all(mode)
+  end
+}
+
+task :default => :pdf
+
+desc 'generate PDF and EPUB file'
+task :all => [:pdf, :epub]
+
+desc 'generate PDF file'
+task :pdf => "book.pdf"
+
+desc 'generate EPUB file'
+task :epub => "book.epub"
+
+desc 'generate review source from markdown'
+task "md2review" => RESRCS
+
+file "book.pdf" => SRC do
+  sh "rm -f book.pdf"
+  sh "rm -rf book book-pdf"
+  sh "#{use_bundler}review-pdfmaker config.yml"
 end
 
-desc "build all html"
-task :html_all do
-  build_all("html")
+file "book.epub" => SRC do
+  sh "rm -f book.epub"
+  sh "rm -rf book book-epub"
+  sh "#{use_bundler}review-epubmaker config.yml"
+end
+
+rule '.re' => '.md' do |t|
+  sh "#{MD2RE} #{t.source} > #{t.name}"
+end
+
+CLEAN.include(["book", "book-pdf", "book.pdf", "book-epub", "book.epub"])
+Dir["#{File.dirname(__FILE__)}/*.re"].sort.each do |path|
+  ["txt", "html", "xml"].each{|ext|
+    file_path = "#{File.dirname(__FILE__)}/#{File.basename(path, '.re')}.#{ext}"
+    if File.exists? file_path
+      CLEAN.include("#{File.basename(path, '.re')}.#{ext}")
+    end
+  }
 end
