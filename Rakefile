@@ -1,12 +1,6 @@
 require 'fileutils'
 require 'rake/clean'
 
-MD2RE = "md2review"
-
-SRCS = FileList["**/*.md"]
-RESRCS = SRCS.ext('re')
-SRC = FileList['*.re'] +  ["config.yml"]
-
 def use_bundler()
   if system("bundle > /dev/null 2>&1")
     "bundle exec "
@@ -47,6 +41,18 @@ end
   end
 }
 
+MD2RE = "md2review"
+
+SRCS = FileList["**/*.md"]
+RESRCS = SRCS.ext('re')
+
+desc 'generate review sources'
+task "md2review" => RESRCS
+
+rule '.re' => '.md' do |t|
+  sh "#{MD2RE} #{t.source} > #{t.name}"
+end
+
 task :default => :pdf
 
 desc 'generate PDF and EPUB file'
@@ -58,23 +64,18 @@ task :pdf => "book.pdf"
 desc 'generate EPUB file'
 task :epub => "book.epub"
 
-desc 'generate review source from markdown'
-task "md2review" => RESRCS
+SRC = FileList['*.re'] +  ["config.yml"]
 
-file "book.pdf" => SRC do
+file "book.pdf" => RESRCS do
   sh "rm -f book.pdf"
   sh "rm -rf book book-pdf"
   sh "#{use_bundler}review-pdfmaker config.yml"
 end
 
-file "book.epub" => SRC do
+file "book.epub" => RESRCS do
   sh "rm -f book.epub"
   sh "rm -rf book book-epub"
   sh "#{use_bundler}review-epubmaker config.yml"
-end
-
-rule '.re' => '.md' do |t|
-  sh "#{MD2RE} #{t.source} > #{t.name}"
 end
 
 CLEAN.include(["book", "book-pdf", "book.pdf", "book-epub", "book.epub"])
